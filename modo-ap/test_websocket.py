@@ -55,7 +55,7 @@ async def stream_camera(uri):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--uri", default="ws://192.168.100.3:8765/video/input/shpd-123?calibracion=1")
+    p.add_argument("--uri", default="ws://192.168.100.13:8765/video/input/shpd-123?calibracion=1")
     args = p.parse_args()
     uri = args.uri
     asyncio.run(stream_camera(uri))
