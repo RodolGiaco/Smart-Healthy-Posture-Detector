@@ -10,7 +10,6 @@ from api.database import SessionLocal
 from api.models import MetricaPostural
 import logging
 import redis
-
 r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -32,11 +31,11 @@ class PostureMonitor:
                 logger.exception("Error al reiniciar la clave de calibración")
         self.mp_pose = mp.solutions.pose  # RPI3 FIX
         
-	# Cargar la configuración desde JSON
+        # Cargar la configuración desde JSON
         cfg = self.load_config()
         self.args = argparse.Namespace(**cfg)
         print(f"[CONFIG] Cargada configuración para sesión {session_id}: {self.args}")
-       
+        
         self.font = cv2.FONT_HERSHEY_SIMPLEX
         self.pose = self.mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5, min_tracking_confidence=0.5)
         self.good_frames = 0
@@ -64,7 +63,7 @@ class PostureMonitor:
                 with open("config/posture_config.json") as f:
                     config = json.load(f)
             except Exception as e:
-                print(f"[ERROR] No se pudo cargar configuración desde {config_path}: {e}")
+                print(f"[ERROR] No se pudo cargar configuración desde posture_config.json: {e}")
                 # valores por defecto en caso de error
                 config = {
                     "video": 0,
@@ -91,7 +90,7 @@ class PostureMonitor:
         fps = 15
         buffer_key = f"shpd-data:{self.session_id}"
         if lm is None:
-            delta = 1.0 / fps
+            delta = 1.0 / fps       
             r.hincrbyfloat(buffer_key, "tiempo_parado", round(delta,1))
             return image
 

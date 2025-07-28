@@ -20,7 +20,9 @@ r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 router = APIRouter(prefix="/sesiones", tags=["sesiones"])
 logger = logging.getLogger(__name__)
 
-BOT_API_URL = "http://bot-api-service:8000/send_report"  # Cambia si tu Service tiene otro nombre
+
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "7796011838:AAGFuQRg2OdEhYT-Cqvg_mGRIOeKWkYNSic")
+telegram_bot = Bot(token=TELEGRAM_TOKEN)
 
 @router.post("/", response_model=SesionOut)
 def crear_sesion(
@@ -107,14 +109,18 @@ def enviar_reporte_telegram(session_id, device_id, db: Session):
     r.delete(f"metricas:{session_id}")
     r.delete(f"analysis:{session_id}")
     # 3. Llamar al bot por HTTP
-    payload = {"telegram_id": esp_telegram_id, "resumen": resumen}
     try:
-        resp = requests.post(BOT_API_URL, json=payload, timeout=5)
-        resp.raise_for_status()
+        telegram_bot.send_message(
+            chat_id=esp_telegram_id,
+            text=resumen,
+            parse_mode="HTML"
+        )
         logger.info("Reporte enviado correctamente a Telegram.")
     except Exception as e:
         logger.error(f"Error enviando reporte a Telegram: {e}")
         raise
+
+
 
 @router.post("/end/{device_id}")
 def finalizar_sesion(device_id: str, db: Session = Depends(get_db)):

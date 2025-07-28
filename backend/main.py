@@ -23,10 +23,17 @@ from datetime import datetime
 from app.core.ws_manager import ws_manager
 import requests
 from functools import partial
+from telegram import Bot
+from fastapi import Request
+
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
 input_ws_by_device: dict[str, WebSocket] = {}
+
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "7796011838:AAGFuQRg2OdEhYT-Cqvg_mGRIOeKWkYNSic")
+telegram_bot = Bot(token=TELEGRAM_TOKEN)
+
 
 BOT_API_URL = "http://bot-api-service:8000/send_report" 
 LOGGING_CONFIG = {
@@ -263,7 +270,10 @@ def enviar_alerta_paciente_sync(device_id: str,
     
     redis_shpd_key = f"shpd-data:{device_id}"
     telegram_id = r.hget(redis_shpd_key, "telegram_id")
-
+    if not telegram_id:
+        logger.warning(f"No hay telegram_id para device_id={device_id}")
+        return
+    
     resumen = (
         f"🚨 <b>Alerta postural</b>\n"
         f"Postura detectada: <b>{etiqueta}</b>\n"
@@ -272,8 +282,12 @@ def enviar_alerta_paciente_sync(device_id: str,
 
     payload = {"telegram_id": telegram_id, "resumen": resumen}
     try:
-        resp = requests.post(BOT_API_URL, json=payload, timeout=5)
-        resp.raise_for_status()
+        telegram_bot.send_message(
+            chat_id=telegram_id,
+            text=resumen,
+            parse_mode="HTML"
+        )
+        logger.info("Alerta enviada al paciente.")
         logger.info("Alerta enviada al paciente.")
     except Exception as e:
         logger.error(f"Error enviando alerta a paciente: {e}")
@@ -304,6 +318,24 @@ app.include_router(postura_counts.router)
 app.include_router(timeline.router)
 app.include_router(calibracion.router)
 processed_frames_queue = asyncio.Queue(maxsize=10)
+
+
+@app.post("/send_report")
+async def send_report(request: Request):
+    data = await request.json()
+    telegram_id = data.get("telegram_id")
+    resumen     = data.get("resumen")
+    if not telegram_id or not resumen:
+        return {"ok": False, "error": "Faltan datos"}
+    try:
+        await telegram_bot.send_message(
+            chat_id=telegram_id,
+            text=resumen,
+            parse_mode="HTML"
+        )
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 @app.websocket("/video/input/{device_id}")
 async def video_input(websocket: WebSocket, device_id: str):
