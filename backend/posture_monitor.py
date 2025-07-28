@@ -11,7 +11,7 @@ from api.models import MetricaPostural
 import logging
 import redis
 
-r = redis.Redis(host='redis', port=6379, decode_responses=True)
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 class PostureMonitor:

@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base, Session
 # 1) URL de conexión (ajusta si es necesario)
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://user:password@postgres-service:5432/shpd_db"
+    "postgresql://user:password@localhost:5432/shpd_db"
 )
 
 # 2) Crea el engine de SQLAlchemy

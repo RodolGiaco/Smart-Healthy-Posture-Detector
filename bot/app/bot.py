@@ -32,7 +32,7 @@ from sqlalchemy.ext.declarative import declarative_base
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://user:password@postgres-service:5432/shpd_db"
+    "postgresql://user:password@localhost:5432/shpd_db"
 )
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -80,7 +80,7 @@ Base.metadata.create_all(bind=engine)
 
 # Conectarse a Redis
 try:
-    r = redis.Redis(host='redis', port=6379, decode_responses=True)
+    r = redis.Redis(host='localhost', port=6379, decode_responses=True)
     r.ping()
     logging.info("Conexión a Redis exitosa desde el Bot.")
 except redis.exceptions.ConnectionError as e:

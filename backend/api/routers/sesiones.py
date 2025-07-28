@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
 
-r = redis.Redis(host="redis", port=6379, decode_responses=True)
+r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 router = APIRouter(prefix="/sesiones", tags=["sesiones"])
 logger = logging.getLogger(__name__)
 
