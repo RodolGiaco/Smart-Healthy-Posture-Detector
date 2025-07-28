@@ -31,7 +31,11 @@ class PostureMonitor:
             except Exception:
                 logger.exception("Error al reiniciar la clave de calibración")
         self.mp_pose = mp.solutions.pose  # RPI3 FIX
-        self.args = self.parse_arguments()
+        
+	# Cargar la configuración desde JSON
+        cfg = self.load_config()
+        self.args = argparse.Namespace(**cfg)
+        print(f"[CONFIG] Cargada configuración para sesión {session_id}: {self.args}")
        
         self.font = cv2.FONT_HERSHEY_SIMPLEX
         self.pose = self.mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5, min_tracking_confidence=0.5)
@@ -55,13 +59,20 @@ class PostureMonitor:
         degree = int(180/m.pi) * theta
         return degree
 
-    def parse_arguments(self):
-        parser = argparse.ArgumentParser(description='Posture Monitor with MediaPipe')
-        parser.add_argument('--video', type=str, default=0, help='Path to the input video file. If not provided, the webcam will be used.')
-        parser.add_argument('--offset-threshold', type=float, default=100, help='Threshold value for shoulder alignment.')  # JSON FIX
-        parser.add_argument('--neck-angle-threshold', type=float, default=25, help='Threshold value for neck inclination angle.')  # JSON FIX
-        parser.add_argument('--torso-angle-threshold', type=float, default=10, help='Threshold value for torso inclination angle.')  # JSON FIX
-        return parser.parse_args()
+    def load_config(self):
+            try:
+                with open("config/posture_config.json") as f:
+                    config = json.load(f)
+            except Exception as e:
+                print(f"[ERROR] No se pudo cargar configuración desde {config_path}: {e}")
+                # valores por defecto en caso de error
+                config = {
+                    "video": 0,
+                    "offset_threshold": 100,
+                    "neck_angle_threshold": 25,
+                    "torso_angle_threshold": 10
+                }
+            return config
 
     def save_data_to_redis(self, datos: dict):
             key = f"metricas:{self.session_id}"
@@ -80,7 +91,7 @@ class PostureMonitor:
         fps = 15
         buffer_key = f"shpd-data:{self.session_id}"
         if lm is None:
-            delta = 1.0 / fps       
+            delta = 1.0 / fps
             r.hincrbyfloat(buffer_key, "tiempo_parado", round(delta,1))
             return image
 

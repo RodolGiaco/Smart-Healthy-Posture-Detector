@@ -1,0 +1,6 @@
+{
+  "video": 0,
+  "offset_threshold": 2,
+  "neck_angle_threshold": 25,
+  "torso_angle_threshold": 10
+}

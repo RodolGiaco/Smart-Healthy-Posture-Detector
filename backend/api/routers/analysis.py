@@ -2,7 +2,7 @@ from fastapi import APIRouter
 import redis
 
 router = APIRouter()
-r = redis.Redis(host="redis", port=6379, decode_responses=True)
+r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
 @router.get("/analysis/{sesion_id}")
 def obtener_analysis(sesion_id: str):

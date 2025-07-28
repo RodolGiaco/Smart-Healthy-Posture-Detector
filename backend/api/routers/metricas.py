@@ -4,7 +4,7 @@ import json
 
 
 router = APIRouter()
-r = redis.Redis(host='redis', port=6379, decode_responses=True)
+r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 
 @router.get("/metricas/{sesion_id}")
 def obtener_metricas(sesion_id: str):

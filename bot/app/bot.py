@@ -275,7 +275,7 @@ async def _save_alert_threshold(update: Update, context: ContextTypes.DEFAULT_TY
 
     if not device_id:
         return
-    r.set(f"alert_threshold_device:{device_id}", seconds)
+    r.set(f"alert_threshold:{device_id}", seconds)
 
         
 
@@ -592,7 +592,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 logging.error("No se pudo guardar la sesión en Redis.")
 
-            url = f"http://172.18.0.2:30080/?session_id={session_id}&device_id={device_id}"
+            url = f"http://rodo.local:3000/?session_id={session_id}&device_id={device_id}"
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("🎥 Ver monitoreo en vivo", url=url)]
             ])
