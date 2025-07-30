@@ -25,14 +25,17 @@ import requests
 from functools import partial
 from telegram import Bot
 from fastapi import Request
+from telegram.request import HTTPXRequest
+from telegram import Bot
 
+# Configurar el backend HTTPX con pool de 8 conexiones y timeout de conexión de 5 seg
+request = HTTPXRequest(connection_pool_size=8, connect_timeout=5.0)
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
 input_ws_by_device: dict[str, WebSocket] = {}
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "7796011838:AAGFuQRg2OdEhYT-Cqvg_mGRIOeKWkYNSic")
-telegram_bot = Bot(token=TELEGRAM_TOKEN)
 
 
 BOT_API_URL = "http://bot-api-service:8000/send_report" 
@@ -249,22 +252,12 @@ async def api_analysis_worker():
                    db.rollback()
                finally:
                    db.close()
-            
-            
         except Exception:
             logger.exception("Error en análisis OpenAI")
         finally:
             api_analysis_queue.task_done()
-            
-            
-async def enviar_alerta_paciente_bg(device_id, etiqueta, bad_time):
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(
-        None,
-        partial(enviar_alerta_paciente_sync, device_id, etiqueta, bad_time)
-    )
-            
-def enviar_alerta_paciente_sync(device_id: str,
+
+async def enviar_alerta_paciente_bg(device_id: str,
                                 etiqueta: str,
                                 bad_time: str):
     
@@ -283,16 +276,11 @@ def enviar_alerta_paciente_sync(device_id: str,
     payload = {"telegram_id": telegram_id, "resumen": resumen}
     try:
         # arrancar un event‑loop en este hilo para await
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(
-            telegram_bot.send_message(
+        await telegram_bot.send_message(
                 chat_id=int(telegram_id),
                 text=resumen,
                 parse_mode="HTML"
-            )
         )
-        loop.close()
         logger.info("✔️ Alerta enviada al paciente.")
     except Exception as e:
         logger.error(f"Error enviando alerta a paciente: {e}")
@@ -301,6 +289,9 @@ def enviar_alerta_paciente_sync(device_id: str,
 # En startup, lanza el worker en background
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    request = HTTPXRequest(connection_pool_size=8, connect_timeout=5.0)
+    global telegram_bot
+    telegram_bot = Bot(token=TELEGRAM_TOKEN, request=request)
     asyncio.create_task(api_analysis_worker())
     logger.debug("✅ API analysis worker scheduled")
     yield  

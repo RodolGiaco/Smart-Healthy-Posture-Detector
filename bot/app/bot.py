@@ -22,6 +22,7 @@ import redis
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 
+
 # --- Configuración logging ---
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -29,6 +30,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.declarative import declarative_base
+
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
@@ -626,7 +628,6 @@ if __name__ == "__main__":
     app = ApplicationBuilder()\
         .token(os.getenv("TELEGRAM_TOKEN", "7796011838:AAGFuQRg2OdEhYT-Cqvg_mGRIOeKWkYNSic"))\
         .build()
-
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(patient_details, pattern=r"^patient:\d+$"))
     app.add_handler(CallbackQueryHandler(list_patients_callback, pattern=r"^list_patients$"))

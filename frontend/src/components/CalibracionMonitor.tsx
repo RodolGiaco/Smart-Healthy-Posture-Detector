@@ -107,6 +107,7 @@ const CalibracionMonitor: React.FC<Props> = ({ onFinish, autoStart = true }) => 
   /* —— Cambiar modo a normal apenas finalizamos —— */
   useEffect(() => {
     if (finalizando && !modoCambiado) {
+      localStorage.setItem('calibrado', '1');
       (async () => {
         try {
           await fetch(
@@ -196,7 +197,7 @@ const CalibracionMonitor: React.FC<Props> = ({ onFinish, autoStart = true }) => 
               onClick={() => {
                 onFinish?.();
                 const url = new URL(window.location.href);
-                url.searchParams.delete("calibracion");
+                /*  url.searchParams.delete("calibracion"); */
                 url.searchParams.delete("forceCalib");
                 url.pathname = "/";
                 window.location.href =

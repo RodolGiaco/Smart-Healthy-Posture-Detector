@@ -7,8 +7,8 @@ const Decision: React.FC = () => {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const force = params.get("forceCalib") === "1";
-  const calibrado = !force && localStorage.getItem("calibrado") === "1";
-
+  /* const calibrado = !force && localStorage.getItem("calibrado") === "1"; */
+  const calibrado = localStorage.getItem("calibrado") === "1";
   if (calibrado) {
     return <App />; // interfaz normal
   }

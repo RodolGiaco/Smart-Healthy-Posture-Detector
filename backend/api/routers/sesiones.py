@@ -16,6 +16,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from telegram import Bot
 from fastapi import Request
+import asyncio
+from telegram.request import HTTPXRequest
+from telegram import Bot
+
+# Configurar el backend HTTPX con pool de 8 conexiones y timeout de conexión de 5 seg
+request = HTTPXRequest(connection_pool_size=8, connect_timeout=5.0)
+
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 router = APIRouter(prefix="/sesiones", tags=["sesiones"])
@@ -23,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "7796011838:AAGFuQRg2OdEhYT-Cqvg_mGRIOeKWkYNSic")
-telegram_bot = Bot(token=TELEGRAM_TOKEN)
+telegram_bot = Bot(token=TELEGRAM_TOKEN, request=request)
 
 @router.post("/", response_model=SesionOut)
 def crear_sesion(
@@ -111,11 +118,16 @@ def enviar_reporte_telegram(session_id, device_id, db: Session):
     r.delete(f"analysis:{session_id}")
     # 3. Llamar al bot por HTTP
     try:
-        telegram_bot.send_message(
-            chat_id=esp_telegram_id,
-            text=resumen,
-            parse_mode="HTML"
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(
+            telegram_bot.send_message(
+                chat_id=esp_telegram_id,
+                text=resumen,
+                parse_mode="HTML"
+            )
         )
+        loop.close()
         logger.info("Reporte enviado correctamente a Telegram.")
     except Exception as e:
         logger.error(f"Error enviando reporte a Telegram: {e}")
