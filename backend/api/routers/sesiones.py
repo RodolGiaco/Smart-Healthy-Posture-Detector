@@ -1,5 +1,5 @@
 # api/routers/sesiones.py
-
+import os
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import List
@@ -14,7 +14,8 @@ import logging
 import uuid
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
-
+from telegram import Bot
+from fastapi import Request
 
 r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 router = APIRouter(prefix="/sesiones", tags=["sesiones"])

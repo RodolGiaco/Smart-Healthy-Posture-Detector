@@ -282,13 +282,18 @@ def enviar_alerta_paciente_sync(device_id: str,
 
     payload = {"telegram_id": telegram_id, "resumen": resumen}
     try:
-        telegram_bot.send_message(
-            chat_id=telegram_id,
-            text=resumen,
-            parse_mode="HTML"
+        # arrancar un event‑loop en este hilo para await
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(
+            telegram_bot.send_message(
+                chat_id=int(telegram_id),
+                text=resumen,
+                parse_mode="HTML"
+            )
         )
-        logger.info("Alerta enviada al paciente.")
-        logger.info("Alerta enviada al paciente.")
+        loop.close()
+        logger.info("✔️ Alerta enviada al paciente.")
     except Exception as e:
         logger.error(f"Error enviando alerta a paciente: {e}")
         
