@@ -1,62 +1,77 @@
 #!/usr/bin/env python3
 import asyncio
 import cv2
-import websockets
 import argparse
+from picamera2 import Picamera2
+import websockets
 from websockets import ConnectionClosed
 
 async def stream_camera(uri):
-    cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
-    if not cap.isOpened():
-        print("❌ No se pudo abrir la cámara")
-        return
+    # 1. Inicializa y configura Picamera2
+    picam2 = Picamera2()
+    config = picam2.create_preview_configuration(
+        main={"format": "RGB888", "size": (640, 480)}
+    )
+    picam2.configure(config)
+    picam2.start()
+    print("📷 Cámara iniciada con Picamera2")
 
-    # Buffer mínimo, MJPEG por hardware, resolución y FPS controlados
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    cap.set(cv2.CAP_PROP_FPS, 10)
+    try:
+        while True:
+            try:
+                # 2. Conecta al WebSocket
+                async with websockets.connect(uri, ping_interval=20, ping_timeout=20) as ws:
+                    print(f"✅ Conectado a {uri}")
+                    count = 0
 
-    while True:
-        try:
-            async with websockets.connect(
-                uri, ping_interval=20, ping_timeout=20
-            ) as ws:
-                print(f"✅ Conectado a {uri}")
-                count = 0
-                while True:
-                    ret, frame = cap.read()
-                    if not ret:
-                        await asyncio.sleep(0.1)
-                        continue
+                    # 3. Bucle de captura y envío
+                    while True:
+                        # Captura un frame (array NumPy, RGB888)
+                        frame = picam2.capture_array()
 
-                    ok, buf = cv2.imencode(
-                        '.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 50]
-                    )
-                    if not ok:
-                        continue
+                        # Codifica a JPEG en memoria
+                        ok, buf = cv2.imencode(
+                            '.jpg',
+                            frame,
+                            [cv2.IMWRITE_JPEG_QUALITY, 50]
+                        )
+                        if not ok:
+                            print("❌ Error al codificar el frame")
+                            await asyncio.sleep(0.1)
+                            continue
 
-                    await ws.send(buf.tobytes())
-                    count += 1
-                    if count % 30 == 0:
-                        print(f"  Enviados {count} frames")
-                    await asyncio.sleep(0.03)
+                        # Envía bytes JPEG al backend
+                        await ws.send(buf.tobytes())
+                        count += 1
 
-        except ConnectionClosed:
-            print("❌ Conexión cerrada, reconectando en 2s...")
-            await asyncio.sleep(2)
-        except Exception as e:
-            print(f"❌ Error: {e}, reconectando en 5s...")
-            await asyncio.sleep(5)
-        finally:
-            # nada que liberar para mantener la cámara abierta
-            pass
+                        # Log cada 30 frames
+                        if count % 30 == 0:
+                            print(f"  ▶️ Enviados {count} frames")
+
+                        # Control de tasa (~30 fps → 0.03 s)
+                        await asyncio.sleep(0.03)
+
+            except ConnectionClosed:
+                print("❌ Conexión cerrada, reintentando en 2 s...")
+                await asyncio.sleep(2)
+
+            except Exception as e:
+                print(f"❌ Error inesperado: {e}\n   Volviendo a conectar en 5 s...")
+                await asyncio.sleep(5)
+
+    finally:
+        # 4. Limpieza de cámara al finalizar
+        picam2.stop()
+        print("🛑 Cámara detenida")
 
 if __name__ == "__main__":
-    p = argparse.ArgumentParser()
-    p.add_argument("--uri", default="ws://192.168.100.13:8765/video/input/shpd-123?calibracion=1")
+    p = argparse.ArgumentParser(
+        description="Envía vídeo de Picamera2 por WebSocket al backend"
+    )
+    p.add_argument(
+        "--uri",
+        default="ws://192.168.100.13:8765/video/input/shpd-123?calibracion=1",
+        help="URI del WebSocket (ej. ws://host:8765/video/…)"
+    )
     args = p.parse_args()
-    uri = args.uri
-    asyncio.run(stream_camera(uri))
-
+    asyncio.run(stream_camera(args.uri))

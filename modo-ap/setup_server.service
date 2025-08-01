@@ -4,9 +4,9 @@ After=network.target
 Wants=network.target
 
 [Service]
-WorkingDirectory=/home/rodo
-ExecStart=/usr/bin/python3 /home/rodo/setup_server.py
-WorkingDirectory=/home/rodo
+WorkingDirectory=/home/rodo/shpd/shpd-all/modo-ap
+ExecStart=/usr/bin/python3 /home/rodo/shpd/shpd-all/modo-ap/setup_server.py
+WorkingDirectory=/home/rodo/shpd/shpd-all/modo-ap
 StandardOutput=journal
 StandardError=journal
 Restart=always

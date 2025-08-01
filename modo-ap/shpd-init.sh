@@ -14,7 +14,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
     touch "$HOTSPOT_FLAG"
 
     echo "[SHPD] 📶 Activando hotspot..."
-    bash /home/rodo/enable_hostspot.sh
+    bash /home/rodo/shpd/shpd-all/modo-ap/enable_hostspot.sh
     sleep  3
    
     echo "[SHPD] 🛰️ Iniciando servidor de configuración..."
@@ -26,6 +26,6 @@ if [ ! -f "$CONFIG_FILE" ]; then
 
 else
   echo "[SHPD] ✅ Configuración encontrada. Iniciando script de streaming..."
-  source /home/rodo/shpd37/bin/activate
-  python3 home/rodo/test_websocket.py
+  source /home/rodo/shpdcamera/bin/activate
+  python3 home/rodo/shpd/shpd-all/modo-ap/test_websocket.py
 fi

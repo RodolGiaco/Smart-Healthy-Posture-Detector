@@ -1,43 +1,52 @@
 #!/bin/bash
 
-echo "[SHPD] Finalizando configuración. Pasando a modo WiFi cliente..."
+echo "[SHPD] Finalizando configuración. Pasando a modo Wi-Fi cliente..."
 
-# (Opcional) Mover la configuración WiFi temporal a la ubicación final con sudo
+# 1) Incorporar la nueva configuración Wi-Fi
 if [ -f "/tmp/wpa_supplicant.conf.tmp" ]; then
     echo "[SHPD] ✍️  Añadiendo nueva configuración de red..."
-    cat /tmp/wpa_supplicant.conf.tmp | sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf > /dev/null
+    sudo tee -a /etc/wpa_supplicant/wpa_supplicant.conf < /tmp/wpa_supplicant.conf.tmp > /dev/null
     sudo rm /tmp/wpa_supplicant.conf.tmp
 else
-    echo "[SHPD] ⚠️  No se encontró el archivo de configuración WiFi temporal."
+    echo "[SHPD] ⚠️  No se encontró el archivo de configuración Wi-Fi temporal."
 fi
 
-# Apagar hotspot
-sudo systemctl stop hostapd
-sudo systemctl stop dnsmasq
+# 2) Apagar el hotspot
+echo "[SHPD] 📴  Apagando hotspot..."
+sudo systemctl stop hostapd.service    dnsmasq.service
 
-# Reiniciar interfaz
+# 3) Deshabilitar y enmascarar servicios de hotspot para el arranque normal
+echo "[SHPD] 🚫  Deshabilitando servicios de modo AP en el próximo arranque..."
+sudo systemctl disable hostapd.service    dnsmasq.service
+sudo systemctl mask    hostapd.service    dnsmasq.service
+
+# 4) (Re)habilitar servicios de cliente Wi-Fi
+echo "[SHPD] ✅  Habilitando servicios de cliente Wi-Fi..."
+sudo systemctl unmask   wpa_supplicant.service dhcpcd.service
+sudo systemctl enable   wpa_supplicant.service dhcpcd.service
+sudo systemctl restart  wpa_supplicant.service dhcpcd.service
+
+# 5) Reiniciar interfaz inalámbrica
+echo "[SHPD] 🔄  Reiniciando interfaz wlan0..."
 sudo ip link set wlan0 down
 sleep 2
 sudo ip link set wlan0 up
 sleep 1
 
-# Conectarse a la nueva red
+# 6) Conectarse a la red configurada
+echo "[SHPD] 🌐  Iniciando wpa_supplicant y DHCP client..."
 sudo wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant.conf
 sleep 5
-
-# Solicitar IP del router
 sudo dhclient wlan0
 
-# --- LIMPIEZA PARA ARRANQUE NORMAL ---
-# 1. Eliminar configuración estática de wlan0 en /etc/dhcpcd.conf
+# 7) Limpiar cualquier configuración estática previa
+echo "[SHPD] 🧹  Limpiando configuración estática en /etc/dhcpcd.conf..."
 sudo sed -i '/^interface wlan0$/,/^$/d' /etc/dhcpcd.conf
 
-# 2. Deshabilitar servicios de hotspot para el arranque normal
-sudo systemctl disable hostapd
-sudo systemctl disable dnsmasq
-
-# 3. Eliminar bandera de hotspot activo
+# 8) Eliminar marca de hotspot activo
+echo "[SHPD] 🏁  Quitando marca de hotspot activo..."
 rm -f /home/rodo/.hotspot_active
 
-# Reiniciar
+# 9) Reiniciar sistema para aplicar cambios permanentes
+echo "[SHPD] 🔁  Reiniciando sistema..."
 sudo reboot
