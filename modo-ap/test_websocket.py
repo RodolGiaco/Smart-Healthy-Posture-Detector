@@ -33,7 +33,7 @@ async def stream_camera(uri):
                         ok, buf = cv2.imencode(
                             '.jpg',
                             frame,
-                            [cv2.IMWRITE_JPEG_QUALITY, 50]
+                            [cv2.IMWRITE_JPEG_QUALITY, 30]
                         )
                         if not ok:
                             print("❌ Error al codificar el frame")
@@ -45,11 +45,11 @@ async def stream_camera(uri):
                         count += 1
 
                         # Log cada 30 frames
-                        if count % 30 == 0:
+                        if count % 10 == 0:
                             print(f"  ▶️ Enviados {count} frames")
 
                         # Control de tasa (~30 fps → 0.03 s)
-                        await asyncio.sleep(0.03)
+                        await asyncio.sleep(0.1)
 
             except ConnectionClosed:
                 print("❌ Conexión cerrada, reintentando en 2 s...")
@@ -70,7 +70,7 @@ if __name__ == "__main__":
     )
     p.add_argument(
         "--uri",
-        default="ws://192.168.100.13:8765/video/input/shpd-123?calibracion=1",
+        default="ws://rodo.local:8765/video/input/shpd-123?calibracion=1",
         help="URI del WebSocket (ej. ws://host:8765/video/…)"
     )
     args = p.parse_args()

@@ -114,18 +114,18 @@ def build_openai_messages(b64: str) -> list[dict]:
 Cuando recibas una imagen, analiza la postura de la persona 
 qué tan predominante es cada una de las siguientes 12 posturas al sentarse.
 Las posturas son:
-- Tronco flexionado
-- Tronco extendido
-- Tronco inclinado lateral izquierda
-- Tronco inclinado lateral derecho
-- Mentón en mano
+- Tronco flexionado hacia delante
+- Tronco extendido hacia atras
+- Inclinación lateral izquierda del tronco 
+- Inclinación lateral derecha del tronco 
+- Mentón apoyado en mano
 - Piernas cruzadas
 - Rodillas elevadas o muy bajas
-- Elevación escapular
+- Hombros elevados/encogidos
 - Antebrazo sin apoyo
 - Cabeza adelantada
-- Cifosis torácica aumentada
-- Pelvis adelantada respecto respaldo
+- Hipercifosis torácica
+- Deslizamiento pélvico anterior
 
 
 Determina y devuelve estrictamente un objeto JSON, sin cercos de código circundante,
@@ -443,3 +443,4 @@ if __name__ == "__main__":
         log_level="warning",
         access_log=True
     )
+

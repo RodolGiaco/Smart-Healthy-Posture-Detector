@@ -58,7 +58,7 @@ network={{
         #    wifi.write(wpa_conf)
 
         # Ejecutar script de finalización para apagar hotspot y reiniciar
-        os.system("nohup bash -c 'sleep 3 && /home/rodo/finalize_config.sh' &")
+        os.system("nohup bash -c 'sleep 3 && /home/rodo/shpd/shpd-all/modo-ap/finalize_config.sh' &")
         return "<h2>✅ Dispositivo configurado. Reiniciando...</h2>"
 
     return render_template_string(HTML_FORM)

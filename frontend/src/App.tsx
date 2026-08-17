@@ -137,7 +137,7 @@ export default function App() {
         .then(data => {
           localStorage.setItem(`session_ended_${deviceId}`, "true");
           // Borra calibrado para forzar calibración en la próxima sesión
-          localStorage.removeItem("calibrado");
+          //localStorage.removeItem("calibrado");
           // Opcional: mostrar un toast o mensaje de éxito
           console.log("Sesión finalizada y reporte enviado:", data);
         })
@@ -159,7 +159,13 @@ export default function App() {
         { method: "POST" }
       ).catch(() => {/* silenciar error, se mostrará en próximo ciclo si falla */});
 
-      window.location.href = `/calibracion?device_id=${deviceId}`;
+      // Opción A) Sesión normal (NO recalibra)
+      // ✅ Dejá ESTA línea descomentada si querés volver a la app normalmente
+      window.location.href = `/?device_id=${deviceId}`;
+
+      // Opción B) Recalibrar SIEMPRE al cerrar sesión
+      // ❗Descomentá ESTA y comentá la de arriba si querés forzar calibración cada vez
+      // window.location.href = `/calibracion?device_id=${deviceId}&forceCalib=1`;
     };
     return (
       <main className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-100 to-green-100 p-4">

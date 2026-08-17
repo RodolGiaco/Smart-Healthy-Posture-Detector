@@ -69,7 +69,7 @@ def get_session_progress(session_id: str):
         elapsed = intervalo
     return {"intervalo_segundos": intervalo, "elapsed": elapsed}
 
-def enviar_reporte_telegram(session_id, device_id, db: Session):
+async def enviar_reporte_telegram(session_id, device_id, db: Session):
     paciente = db.query(Paciente).filter(Paciente.device_id == device_id).first()
     especialista = get_especialista(db)
 
@@ -118,16 +118,11 @@ def enviar_reporte_telegram(session_id, device_id, db: Session):
     r.delete(f"analysis:{session_id}")
     # 3. Llamar al bot por HTTP
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(
-            telegram_bot.send_message(
-                chat_id=esp_telegram_id,
-                text=resumen,
-                parse_mode="HTML"
-            )
+        await telegram_bot.send_message(
+           chat_id=esp_telegram_id,
+           text=resumen,
+           parse_mode="HTML"
         )
-        loop.close()
         logger.info("Reporte enviado correctamente a Telegram.")
     except Exception as e:
         logger.error(f"Error enviando reporte a Telegram: {e}")
@@ -136,7 +131,7 @@ def enviar_reporte_telegram(session_id, device_id, db: Session):
 
 
 @router.post("/end/{device_id}")
-def finalizar_sesion(device_id: str, db: Session = Depends(get_db)):
+async def finalizar_sesion(device_id: str, db: Session = Depends(get_db)):
     """
     Finaliza la sesión usando el device_id: busca el session_id en Redis, limpia los datos temporales y envía el reporte.
     """
@@ -151,7 +146,7 @@ def finalizar_sesion(device_id: str, db: Session = Depends(get_db)):
 
     # Enviar reporte a Telegram
     try:
-        enviar_reporte_telegram(session_id, device_id, db)
+        await enviar_reporte_telegram(session_id, device_id, db)
         # Marca la sesión como finalizada por 1 hora
         r.setex(ended_key, 3600, "1")
         # Elimina el session_id del buffer shpd-data:{device_id}
