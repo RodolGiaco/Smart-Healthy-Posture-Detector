@@ -2,3 +2,11 @@ node_modules/
 **/__pycache__/
 *.pyc
 shpd11/
+.venv/
+.devdata/
+frontend/build/
+.env
+*.env
+apis.txt
+*.log
+*.rdb
