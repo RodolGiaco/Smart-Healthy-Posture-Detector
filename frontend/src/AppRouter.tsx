@@ -30,7 +30,6 @@ function applyOneShotReset(search: string) {
 const Decision: React.FC = () => {
   const location = useLocation();
   applyOneShotReset(location.search);
-  return <App />;
 
   const params = new URLSearchParams(location.search);
   const force = params.get("forceCalib") === "1";

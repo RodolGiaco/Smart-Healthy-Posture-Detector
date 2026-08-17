@@ -1,0 +1,78 @@
+# Combined, pinned dependency set for running backend/ + bot/ on a regular PC
+# (Linux/macOS/Windows x86_64), with no Raspberry Pi or camera hardware involved.
+#
+# Generated from a real install + boot test on 2026-08-17, including a live
+# end-to-end pose-detection check (webcam -> backend -> MediaPipe -> skeleton
+# drawn -> /video/output).
+#
+# mediapipe is pinned to 0.10.14 on purpose: mediapipe>=1.0 removed the
+# legacy `mediapipe.solutions` API that posture_monitor.py depends on
+# (mp.solutions.pose). Anything >=1.0 breaks PostureMonitor with
+# "AttributeError: module 'mediapipe' has no attribute 'solutions'".
+#
+# This file is a superset of backend/requirements.txt + bot/requirements.txt,
+# resolved together in one virtualenv so both services can share it.
+# It intentionally excludes picamera2 (modo-ap/test_websocket.py), which only
+# runs on a Raspberry Pi with a camera attached.
+#
+# Usage:
+#   python3 -m venv .venv && source .venv/bin/activate
+#   pip install -r requirements-pc.txt
+
+absl-py==2.5.0
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.14.2
+attrs==26.1.0
+certifi==2026.7.22
+cffi==2.1.1
+click==8.4.2
+contourpy==1.3.3
+cycler==0.12.1
+distro==1.9.0
+fastapi==0.141.1
+flatbuffers==25.12.19
+fonttools==4.63.0
+greenlet==3.5.5
+h11==0.16.0
+httpcore==1.0.9
+httpcore2==2.10.0
+httpx==0.28.1
+httpx2==2.10.0
+idna==3.18
+jax==0.11.1
+jaxlib==0.11.1
+jiter==0.16.0
+kiwisolver==1.5.0
+matplotlib==3.11.1
+mediapipe==0.10.14
+ml_dtypes==0.6.0
+numpy==2.5.2
+openai==3.2.0
+opencv-contrib-python==5.0.0.93
+opencv-python-headless==5.0.0.93
+opt_einsum==3.4.0
+packaging==26.3
+pillow==12.3.0
+protobuf==4.25.9
+psycopg2-binary==2.9.9
+pycparser==3.0
+pydantic==2.13.4
+pydantic_core==2.46.4
+pyparsing==3.3.2
+python-dateutil==2.9.0.post0
+python-dotenv==1.0.1
+python-telegram-bot==22.8
+redis==8.1.0
+scipy==1.18.0
+six==1.17.0
+sniffio==1.3.1
+sounddevice==0.5.6
+SQLAlchemy==2.0.27
+starlette==1.6.0
+tqdm==4.70.0
+truststore==0.10.4
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+uvicorn==0.52.3
+websockets==17.0.1

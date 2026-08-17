@@ -1,3 +1,0 @@
-fastapi
-python-telegram-bot
-uvicorn 

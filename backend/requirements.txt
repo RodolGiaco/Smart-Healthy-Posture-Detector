@@ -1,6 +1,11 @@
 opencv-python-headless
 websockets
-mediapipe
+# Fijado a propósito: mediapipe>=1.0 eliminó la API legacy `mediapipe.solutions`
+# que usa posture_monitor.py (mp.solutions.pose). Sin este pin, un pip install
+# nuevo instala 1.0.x y posture_monitor.py falla con
+# "AttributeError: module 'mediapipe' has no attribute 'solutions'" en cuanto
+# se crea el primer PostureMonitor.
+mediapipe==0.10.14
 numpy
 fastapi
 uvicorn
@@ -8,4 +13,4 @@ sqlalchemy
 psycopg2-binary
 redis
 openai>=0.27.0
-requests
+python-dotenv

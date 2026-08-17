@@ -3,7 +3,6 @@ import React, { useEffect, useState } from "react";
 import {
   SessionData,
   SessionProgressData,
-  HistorialPosturalItem,
   Paciente,
   TimelineEntry,
 } from "./types";

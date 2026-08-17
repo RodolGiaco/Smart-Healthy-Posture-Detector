@@ -8,7 +8,6 @@ from api.models import Sesion, Paciente, PosturaCount, MetricaPostural, Especial
 from api.schemas import SesionIn, SesionOut
 import time
 import redis
-import requests
 import json
 import logging
 import uuid
@@ -18,7 +17,6 @@ from telegram import Bot
 from fastapi import Request
 import asyncio
 from telegram.request import HTTPXRequest
-from telegram import Bot
 
 # Configurar el backend HTTPX con pool de 8 conexiones y timeout de conexión de 5 seg
 request = HTTPXRequest(connection_pool_size=8, connect_timeout=5.0)
@@ -29,7 +27,9 @@ router = APIRouter(prefix="/sesiones", tags=["sesiones"])
 logger = logging.getLogger(__name__)
 
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "7796011838:AAGFuQRg2OdEhYT-Cqvg_mGRIOeKWkYNSic")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+if not TELEGRAM_TOKEN:
+    raise RuntimeError("TELEGRAM_TOKEN environment variable is not set")
 telegram_bot = Bot(token=TELEGRAM_TOKEN, request=request)
 
 @router.post("/", response_model=SesionOut)
@@ -37,6 +37,13 @@ def crear_sesion(
     s: SesionIn,
     db: Session = Depends(get_db)
 ) -> SesionOut:
+    """
+    Crea una fila de Sesion. Nota: `SesionIn` no declara `device_id` (solo
+    `intervalo_segundos` y `modo`), así que `hasattr(s, 'device_id')` es
+    siempre False y el borrado de `ended:{device_id}` de más abajo nunca se
+    ejecuta — el bot es quien realmente crea las sesiones hoy, escribiendo
+    directo a la base en vez de llamar a este endpoint.
+    """
     nueva = Sesion(**s.dict())
     db.add(nueva)
     db.commit()
@@ -50,6 +57,7 @@ def crear_sesion(
 def listar_sesiones(
     db: Session = Depends(get_db)
 ) -> List[SesionOut]:
+    """Lista todas las sesiones sin filtrar (ni por paciente ni por device_id)."""
     return db.query(Sesion).all()
 
 @router.get("/progress/{session_id}")
@@ -70,6 +78,15 @@ def get_session_progress(session_id: str):
     return {"intervalo_segundos": intervalo, "elapsed": elapsed}
 
 async def enviar_reporte_telegram(session_id, device_id, db: Session):
+    """
+    Arma y manda por Telegram el resumen de cierre de una sesión (fecha,
+    duración, postura más frecuente, % correcta/incorrecta, alertas) al
+    especialista registrado, y limpia las claves de Redis de esa sesión
+    (`shpd-session`, `metricas`, `analysis`). Requiere que el paciente del
+    device_id exista y que haya exactamente un Especialista en la base
+    (ver `get_especialista`); si cualquiera de los dos falla, propaga la
+    excepción sin enviar nada.
+    """
     paciente = db.query(Paciente).filter(Paciente.device_id == device_id).first()
     especialista = get_especialista(db)
 
@@ -157,6 +174,13 @@ async def finalizar_sesion(device_id: str, db: Session = Depends(get_db)):
 
 @router.post("/reiniciar/{session_id}")
 def reiniciar_sesion(session_id: str, device_id: str | None = Query(None), db: Session = Depends(get_db)):
+    """
+    Revive una sesión existente para arrancar de nuevo: resetea el
+    contador de tiempo transcurrido en Redis, borra métricas/análisis/
+    timeline previos de esa sesión (en Redis y en Postgres) y, si se pasa
+    `device_id`, vuelve a mapearlo a este `session_id`. Se usa desde el
+    botón "Iniciar nueva sesión" del frontend al terminar una sesión.
+    """
     # 0) Validar formato UUID
     try:
         uuid_obj = uuid.UUID(session_id)
@@ -209,6 +233,13 @@ def reiniciar_sesion(session_id: str, device_id: str | None = Query(None), db: S
 
 
 def get_especialista(db: Session):
+    """
+    Devuelve "el" especialista del sistema. El diseño asume un único
+    especialista global (no uno por paciente): `scalar_one()` explota si la
+    tabla `especialistas` tiene 0 o más de 1 fila, así que tiene que existir
+    exactamente un especialista registrado por el bot antes de poder cerrar
+    sesiones con reporte.
+    """
     return db.execute(select(Especialista)).scalar_one()
 
 

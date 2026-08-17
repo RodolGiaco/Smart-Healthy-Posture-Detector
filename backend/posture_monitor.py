@@ -14,6 +14,23 @@ r = redis.Redis(host='localhost', port=6379, decode_responses=True)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 class PostureMonitor:
+    """
+    Analiza un frame a la vez con MediaPipe Pose y decide si la persona
+    está en buena o mala postura, comparando los ángulos de cuello y torso
+    (lado derecho del cuerpo) contra los umbrales de
+    `config/posture_config.json`.
+
+    Una instancia vive mientras dura una sesión (se recrea cuando cambia el
+    session_id en Redis, ver `main.video_input`). Con `save_metrics=False`
+    trabaja en modo calibración: no guarda métricas en Postgres/Redis ni
+    dispara alertas, solo acumula buen/mal tiempo en `calib:{session_id}`
+    para la barra de progreso del frontend. Con `save_metrics=True` es una
+    sesión real: persiste métricas, cuenta transiciones a mala postura y,
+    al superar `time_threshold` segundos seguidos en mala postura, marca
+    `raw_frame:{session_id}` para que el backend dispare la clasificación
+    con OpenAI.
+    """
+
     def __init__(self,  session_id: str, *, save_metrics: bool = True, device_id: str):
         logger.info(f"[PostureMonitor] Instanciado para session_id={session_id} save_metrics={save_metrics}")
         self.mp_drawing = mp.solutions.drawing_utils
@@ -54,6 +71,11 @@ class PostureMonitor:
         return dist
 
     def findAngle(self, x1, y1, x2, y2):
+        """
+        Ángulo (en grados) entre el segmento (x1,y1)-(x2,y2) y la vertical
+        que pasa por (x1,y1). Se usa dos veces por frame: hombro→oreja para
+        la inclinación del cuello, y cadera→hombro para la del torso.
+        """
         theta = m.acos((y2 - y1) * (-y1) / (m.sqrt((x2 - x1)**2 + (y2 - y1)**2) * y1))
         degree = int(180/m.pi) * theta
         return degree
@@ -80,6 +102,18 @@ class PostureMonitor:
 
     
     def process_frame(self, image):
+        """
+        Corre MediaPipe Pose sobre un frame BGR y devuelve el mismo frame
+        con el overlay dibujado (esqueleto parcial, ángulos, tiempo en
+        buena/mala postura). Si no detecta a nadie (`pose_landmarks` es
+        None), devuelve el frame sin modificar y solo actualiza
+        `tiempo_parado` en Redis.
+
+        Efectos de lado sobre Redis en cada llamada: contadores de frames
+        buenos/malos, transiciones a mala postura, tiempo sentado/parado y,
+        con `save_metrics=True`, el snapshot de métricas de la sesión y la
+        marca de alerta cuando se supera `time_threshold`.
+        """
         h, w = image.shape[:2]
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         keypoints = self.pose.process(image_rgb)

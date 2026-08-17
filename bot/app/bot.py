@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()  # carga bot/.env o el .env de la raíz del repo antes de leer cualquier variable
+
 import os
 import logging
 import time
@@ -36,6 +39,10 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql://user:password@localhost:5432/shpd_db"
 )
+# Host donde corre el frontend (el enlace "Ver monitoreo en vivo" que manda el
+# bot se arma con esto). En la Raspberry Pi es "rodo.local:3000"; para probar
+# en una PC, poné FRONTEND_URL=http://localhost:3000 en tu .env.
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://rodo.local:3000")
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -153,6 +160,8 @@ ALERT_KB = InlineKeyboardMarkup([
 
 # --- Utilidades de pacientes ---
 def _format_patient(full_name: str) -> str:
+    """Reordena "Nombre Apellido" a "Apellido Nombre" para listar pacientes
+    ordenados por apellido en el menú del especialista."""
     parts = full_name.split()
     if len(parts) >= 2:
         last = parts[-1]
@@ -217,6 +226,7 @@ async def list_patients_callback(update: Update, context: ContextTypes.DEFAULT_T
     await list_patients(update, context)
 
 def extract_choice(text: str) -> str:
+    """Saca el número de opción de un botón de menú, ej. "1. 10 minutos" -> "1"."""
     if "." in text:
         return text.split(".")[0].strip()
     return text.strip()
@@ -263,6 +273,12 @@ async def alert_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await show_main_menu(fake_update, context)
 
 async def _save_alert_threshold(update: Update, context: ContextTypes.DEFAULT_TYPE, seconds: int):
+    """
+    Resuelve el device_id del paciente que escribió (a partir de su
+    telegram_id) y guarda `alert_threshold:{device_id}` en Redis — es el
+    umbral que `PostureMonitor` lee para decidir cuánto tiempo en mala
+    postura tolerar antes de disparar una alerta.
+    """
     if not r:
         return
     telegram_id = str(update.effective_user.id)
@@ -291,6 +307,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Único handler de texto libre del bot: es una máquina de estados manejada
+    a mano vía `context.user_data['state']`. Según el estado actual
+    interpreta el mensaje como selección de rol, registro de
+    paciente/especialista, respuesta de un menú, valor de umbral
+    personalizado, etc. Los estados usados son, entre otros:
+    `awaiting_specialist_name`, `awaiting_specialist_age`,
+    `awaiting_patient_data` (recorre `FIELDS` uno por uno),
+    `awaiting_alert_custom_value` y `awaiting_session_config`.
+    Con `state is None` se interpreta como navegación del menú principal.
+    """
     text = update.message.text.strip()
     choice = text.split('.')[0] if "." in text else text
     state = context.user_data.get("state")
@@ -594,7 +621,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 logging.error("No se pudo guardar la sesión en Redis.")
 
-            url = f"http://rodo.local:3000/?session_id={session_id}&device_id={device_id}"
+            url = f"{FRONTEND_URL}/?session_id={session_id}&device_id={device_id}"
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("🎥 Ver monitoreo en vivo", url=url)]
             ])
@@ -625,8 +652,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_main_menu(update, context)
 
 if __name__ == "__main__":
+    telegram_token = os.getenv("TELEGRAM_TOKEN")
+    if not telegram_token:
+        raise RuntimeError("TELEGRAM_TOKEN environment variable is not set")
+
     app = ApplicationBuilder()\
-        .token(os.getenv("TELEGRAM_TOKEN", "7796011838:AAGFuQRg2OdEhYT-Cqvg_mGRIOeKWkYNSic"))\
+        .token(telegram_token)\
         .build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(patient_details, pattern=r"^patient:\d+$"))

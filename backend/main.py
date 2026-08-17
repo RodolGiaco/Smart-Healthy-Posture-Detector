@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()  # carga backend/.env o el .env de la raíz del repo antes de leer cualquier variable
+
 import os
 import asyncio
 import logging
@@ -21,12 +24,9 @@ from posture_monitor import PostureMonitor
 from api.routers import sesiones, pacientes, metricas, analysis, postura_counts, timeline, calibracion
 from datetime import datetime
 from app.core.ws_manager import ws_manager
-import requests
-from functools import partial
 from telegram import Bot
 from fastapi import Request
 from telegram.request import HTTPXRequest
-from telegram import Bot
 
 # Configurar el backend HTTPX con pool de 8 conexiones y timeout de conexión de 5 seg
 request = HTTPXRequest(connection_pool_size=8, connect_timeout=5.0)
@@ -35,10 +35,10 @@ r = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
 input_ws_by_device: dict[str, WebSocket] = {}
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "7796011838:AAGFuQRg2OdEhYT-Cqvg_mGRIOeKWkYNSic")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+if not TELEGRAM_TOKEN:
+    raise RuntimeError("TELEGRAM_TOKEN environment variable is not set")
 
-
-BOT_API_URL = "http://bot-api-service:8000/send_report" 
 LOGGING_CONFIG = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -91,10 +91,9 @@ logger.setLevel(logging.DEBUG)
 
 
 # ——— CONFIGURACIÓN DEL CLIENTE DE OPENAI ———
-API_KEY = os.getenv(
-    "OPENAI_API_KEY",
-    "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"
-)
+API_KEY = os.getenv("OPENAI_API_KEY")
+if not API_KEY:
+    raise RuntimeError("OPENAI_API_KEY environment variable is not set")
 client = OpenAI(api_key=API_KEY)
 MODEL = "gpt-4o-mini"
 
@@ -260,7 +259,12 @@ async def api_analysis_worker():
 async def enviar_alerta_paciente_bg(device_id: str,
                                 etiqueta: str,
                                 bad_time: str):
-    
+    """
+    Manda al paciente, por Telegram, la alerta de la postura que acaba de
+    clasificar OpenAI. Resuelve el chat_id del paciente a partir del
+    device_id (clave `shpd-data:{device_id}` en Redis); si no hay
+    telegram_id asociado, no hace nada.
+    """
     redis_shpd_key = f"shpd-data:{device_id}"
     telegram_id = r.hget(redis_shpd_key, "telegram_id")
     if not telegram_id:
@@ -289,6 +293,11 @@ async def enviar_alerta_paciente_bg(device_id: str,
 # En startup, lanza el worker en background
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """
+    Ciclo de vida de la app: crea el cliente de Telegram (`telegram_bot`,
+    usado por las alertas y el reporte final) y lanza `api_analysis_worker`
+    como tarea de fondo antes de aceptar requests.
+    """
     request = HTTPXRequest(connection_pool_size=8, connect_timeout=5.0)
     global telegram_bot
     telegram_bot = Bot(token=TELEGRAM_TOKEN, request=request)
@@ -318,6 +327,12 @@ processed_frames_queue = asyncio.Queue(maxsize=10)
 
 @app.post("/send_report")
 async def send_report(request: Request):
+    """
+    Reenvía un mensaje arbitrario a un chat_id de Telegram vía el bot del
+    backend. Recibe `{telegram_id, resumen}` en el body. Ningún cliente de
+    este repo lo llama actualmente (ni frontend, ni bot, ni el propio
+    backend) — queda expuesto como endpoint genérico de notificación.
+    """
     data = await request.json()
     telegram_id = data.get("telegram_id")
     resumen     = data.get("resumen")
@@ -335,6 +350,23 @@ async def send_report(request: Request):
 
 @app.websocket("/video/input/{device_id}")
 async def video_input(websocket: WebSocket, device_id: str):
+    """
+    Recibe el stream de frames JPEG crudos de un dispositivo (Picamera2 en
+    la Raspberry Pi, o `modo-pc/stream_webcam.py` en PC).
+
+    Por cada frame: resuelve el session_id activo del device en Redis,
+    (re)crea el `PostureMonitor` si la sesión cambió, procesa el frame
+    (dibuja ángulos/esqueleto) y lo publica en `processed_frames_queue`
+    para que `/video/output` lo retransmita. Si Redis marcó un frame como
+    disparador de alerta (`raw_frame:{session_id}`), lo encola en
+    `api_analysis_queue` para que `api_analysis_worker` lo clasifique con
+    OpenAI.
+
+    El modo calibración se decide por el query string de esta conexión
+    (`?calibracion=1`) mientras no haya un `mode` explícito en
+    `shpd-data:{device_id}`; una vez que el frontend marca `mode=normal`
+    (fin de la calibración), ese valor manda.
+    """
     await websocket.accept()
     ws_manager.inputs[device_id] = websocket
     loop = asyncio.get_running_loop()
@@ -415,6 +447,12 @@ async def video_input(websocket: WebSocket, device_id: str):
 
 @app.websocket("/video/output")
 async def video_output(websocket: WebSocket):
+    """
+    Retransmite a quien esté conectado (típicamente el frontend) los frames
+    ya procesados que cualquier `/video/input/{device_id}` fue dejando en
+    `processed_frames_queue`. Es un único canal compartido por todo el
+    backend, no filtra por dispositivo ni por sesión.
+    """
     await websocket.accept()
     try:
         while True:
