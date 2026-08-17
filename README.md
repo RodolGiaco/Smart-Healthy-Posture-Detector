@@ -1,6 +1,6 @@
 # SHPD — Smart Healthy Posture Detector
 
-Sistema de monitoreo postural en tiempo real para Raspberry Pi 5: detecta con visión por computadora cuándo una persona sentada adopta una mala postura y avisa por Telegram antes de que se vuelva un hábito.
+Sistema de monitoreo postural en tiempo real para Raspberry Pi 3: detecta con visión por computadora cuándo una persona sentada adopta una mala postura y avisa por Telegram antes de que se vuelva un hábito.
 
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
@@ -11,7 +11,7 @@ Sistema de monitoreo postural en tiempo real para Raspberry Pi 5: detecta con vi
 ![Telegram](https://img.shields.io/badge/Telegram-Bot-26A5E4?logo=telegram&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)
-![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-5-A22846?logo=raspberrypi&logoColor=white)
+![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-3-A22846?logo=raspberrypi&logoColor=white)
 ![Estado](https://img.shields.io/badge/estado-activo-brightgreen)
 ![Licencia](https://img.shields.io/badge/licencia-todos%20los%20derechos%20reservados-lightgrey)
 
@@ -35,7 +35,7 @@ Sistema de monitoreo postural en tiempo real para Raspberry Pi 5: detecta con vi
 
 SHPD monitorea la postura de una persona sentada frente a una cámara y avisa cuando detecta que lleva demasiado tiempo en mala posición. El caso de uso central es el trabajo en escritorio: sesiones largas frente a una pantalla donde la mala postura se instala sin que la persona lo note, con impacto directo en dolores cervicales y lumbares.
 
-El sistema corre sobre una **Raspberry Pi 5** con una cámara conectada. Un pipeline de visión por computadora en dos etapas hace el trabajo pesado: **MediaPipe Pose** calcula en cada frame los ángulos de cuello y torso (geometría pura, sin costo de red, corre a la velocidad de la cámara), y cuando detecta que la mala postura se sostiene más de un umbral configurable, dispara una segunda clasificación más fina con **GPT-4o-mini (visión)** de OpenAI, que identifica cuál de 12 posturas problemáticas específicas está ocurriendo (tronco flexionado, hombros elevados, mentón apoyado en la mano, etc.). Esta combinación evita pagar una llamada a un LLM en cada frame y reserva la clasificación cara para el momento en que realmente aporta información.
+El sistema corre sobre una **Raspberry Pi 3** con una cámara conectada. Un pipeline de visión por computadora en dos etapas hace el trabajo pesado: **MediaPipe Pose** calcula en cada frame los ángulos de cuello y torso (geometría pura, sin costo de red, corre a la velocidad de la cámara), y cuando detecta que la mala postura se sostiene más de un umbral configurable, dispara una segunda clasificación más fina con **GPT-4o-mini (visión)** de OpenAI, que identifica cuál de 12 posturas problemáticas específicas está ocurriendo (tronco flexionado, hombros elevados, mentón apoyado en la mano, etc.). Esta combinación evita pagar una llamada a un LLM en cada frame y reserva la clasificación cara para el momento en que realmente aporta información.
 
 Cada paciente interactúa con el sistema exclusivamente a través de un **bot de Telegram**: ahí se registra, configura la duración de sus sesiones y el umbral de alerta, y recibe las notificaciones de mala postura y el reporte al finalizar cada sesión. Un **especialista** (kinesiólogo, médico, quien haga seguimiento) se registra por el mismo bot y recibe ese reporte final con el resumen de la sesión. Un **frontend web** complementa el flujo con video en vivo, métricas en tiempo real y el proceso de calibración inicial del dispositivo.
 
@@ -131,7 +131,7 @@ Primer arranque de la Raspberry Pi, sin monitor ni teclado: hotspot WiFi propio 
 
 ```mermaid
 flowchart TB
-    subgraph Dispositivo["Raspberry Pi 5 / PC de testing"]
+    subgraph Dispositivo["Raspberry Pi 3 / PC de testing"]
         CAM["Cámara (Picamera2 o webcam)"]
     end
 
@@ -240,7 +240,7 @@ shpd-all/
 
 SHPD corre en **dos contextos distintos**, con requisitos y pasos de arranque diferentes:
 
-- **Modo Raspberry Pi**: el despliegue real, en el hardware final (Raspberry Pi 5 + cámara). Usa `modo-ap/` para el aprovisionamiento WiFi inicial y `modo-app/` para el arranque automático de los tres servicios vía `systemd`.
+- **Modo Raspberry Pi**: el despliegue real, en el hardware final (Raspberry Pi 3 + cámara). Usa `modo-ap/` para el aprovisionamiento WiFi inicial y `modo-app/` para el arranque automático de los tres servicios vía `systemd`.
 - **Modo PC**: para desarrollar y probar el sistema sin tener el hardware a mano, usando la webcam de una notebook/PC común. Usa `modo-pc/`.
 
 La lógica de negocio (backend, bot, frontend) es exactamente la misma en los dos casos — lo que cambia es de dónde vienen los frames de video y cómo se arrancan los procesos.
@@ -248,7 +248,7 @@ La lógica de negocio (backend, bot, frontend) es exactamente la misma en los do
 ### Modo Raspberry Pi (dispositivo real)
 
 **Requisitos previos:**
-- Raspberry Pi 5 con Raspberry Pi OS, cámara compatible con Picamera2.
+- Raspberry Pi 3 con Raspberry Pi OS, cámara compatible con Picamera2.
 - PostgreSQL y Redis instalados y corriendo en la propia Raspberry Pi.
 - Python 3 con los paquetes de `backend/requirements.txt` y `bot/requirements.txt` instalados, más `picamera2` y `flask` (usados por `modo-ap/test_websocket.py` y `modo-ap/setup_server.py` respectivamente) — `picamera2` es específico del sistema operativo de la Pi y se instala vía `apt`, no `pip`.
 - `hostapd` y `dnsmasq` (los instala `modo-ap/enable_hostspot.sh` si no están).
