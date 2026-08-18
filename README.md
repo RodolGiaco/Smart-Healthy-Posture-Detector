@@ -36,7 +36,7 @@ Sistema de monitoreo postural en tiempo real para Raspberry Pi 3: detecta con vi
 
 SHPD monitorea la postura de una persona sentada frente a una cámara y avisa cuando detecta que lleva demasiado tiempo en mala posición. El caso de uso central es el trabajo en escritorio: sesiones largas frente a una pantalla donde la mala postura se instala sin que la persona lo note, con impacto directo en dolores cervicales y lumbares.
 
-El sistema corre sobre una **Raspberry Pi 3** con una cámara conectada. Un pipeline de visión por computadora en dos etapas hace el trabajo pesado: **MediaPipe Pose** calcula en cada frame los ángulos de cuello y torso (geometría pura, sin costo de red, corre a la velocidad de la cámara), y cuando detecta que la mala postura se sostiene más de un umbral configurable, dispara una segunda clasificación más fina con **GPT-4o-mini (visión)** de OpenAI, que identifica cuál de 12 posturas problemáticas específicas está ocurriendo (tronco flexionado, hombros elevados, mentón apoyado en la mano, etc.). Esta combinación evita pagar una llamada a un LLM en cada frame y reserva la clasificación cara para el momento en que realmente aporta información.
+El sistema corre sobre una **Raspberry Pi 3** con una cámara conectada. Un pipeline de visión por computadora en dos etapas hace el trabajo pesado: **MediaPipe Pose** calcula en cada frame los ángulos de cuello y torso (geometría pura, sin costo de red, corre a la velocidad de la cámara), y cuando detecta que la mala postura se sostiene más de un umbral configurable, dispara una segunda clasificación más fina que identifica cuál de 12 posturas problemáticas específicas está ocurriendo (tronco flexionado, hombros elevados, mentón apoyado en la mano, etc.). Esa segunda etapa corre, por default, con un **modelo propio** — un MLP entrenado y exportado a TFLite (ver [docs/POSTURE_CLASSIFIER.md](docs/POSTURE_CLASSIFIER.md)) que infiere local, sin red ni costo por uso — o, como alternativa intercambiable por variable de entorno, con **GPT-4o-mini (visión)** de OpenAI. Dispararla solo cuando la mala postura ya se sostuvo un rato, y no en cada frame, evita trabajo de más sin importar cuál de los dos motores esté activo.
 
 Cada paciente interactúa con el sistema exclusivamente a través de un **bot de Telegram**: ahí se registra, configura la duración de sus sesiones y el umbral de alerta, y recibe las notificaciones de mala postura y el reporte al finalizar cada sesión. Un **especialista** (kinesiólogo, médico, quien haga seguimiento) se registra por el mismo bot y recibe ese reporte final con el resumen de la sesión. Un **frontend web** complementa el flujo con video en vivo, métricas en tiempo real y el proceso de calibración inicial del dispositivo.
 
@@ -147,6 +147,7 @@ flowchart TB
 
     REDIS[("Redis<br/>estado en vivo")]
     PG[("PostgreSQL<br/>datos persistentes")]
+    MLP["Modelo local<br/>MLP · TFLite (default)"]
     OPENAI["OpenAI GPT-4o-mini<br/>(visión)"]
     TG["Telegram Bot API"]
     BOT["Bot de Telegram"]
@@ -157,7 +158,9 @@ flowchart TB
     MP -- "frame + overlay" --> WSOUT
     MP -- "contadores, calibración" --> REDIS
     MP -- "mala postura sostenida" --> WORKER
-    WORKER -- "frame" --> OPENAI
+    WORKER -- "landmarks (POSTURE_CLASSIFIER=local)" --> MLP
+    WORKER -- "frame (POSTURE_CLASSIFIER=openai)" --> OPENAI
+    MLP -- "12 posturas (%)" --> WORKER
     OPENAI -- "12 posturas (%)" --> WORKER
     WORKER --> REDIS
     WORKER -- "alerta" --> TG
@@ -359,7 +362,7 @@ Referencia completa con la descripción de cada uno en **[docs/API.md](docs/API.
 
 ## Decisiones técnicas
 
-- **MediaPipe + OpenAI en dos etapas, no una sola llamada a IA por frame**: los ángulos de cuello/torso con MediaPipe son baratos y corren en tiempo real en el hardware de la Raspberry Pi; la clasificación con GPT-4o-mini solo se dispara cuando la mala postura ya se sostuvo el tiempo suficiente. Evita el costo (en dinero y latencia) de mandar cada frame a un LLM.
+- **Dos etapas, no una clasificación pesada por frame**: los ángulos de cuello/torso con MediaPipe son baratos y corren en tiempo real en el hardware de la Raspberry Pi; la clasificación fina (modelo local o GPT-4o-mini, ver el punto siguiente) solo se dispara cuando la mala postura ya se sostuvo el tiempo suficiente. Evita trabajo de más en cada frame — y en el caso de OpenAI, además evita su costo en dinero y latencia.
 - **Redis para estado efímero, PostgreSQL para datos durables**: contadores de frames, banderas de calibración y colas de alerta viven en Redis porque cambian a alta frecuencia y no necesitan sobrevivir un reinicio; pacientes, especialistas, sesiones y métricas históricas van a PostgreSQL.
 - **Telegram como interfaz principal del paciente**: evita desarrollar y mantener una app móvil dedicada. Cualquier persona con Telegram ya tiene el cliente instalado, y el bot cubre registro, configuración y notificaciones con una curva de aprendizaje mínima.
 - **Modo Access Point para el primer arranque**: una Raspberry Pi sin monitor ni teclado no puede configurarse por los medios tradicionales. Levantar su propio hotspot WiFi con un formulario web es el patrón estándar de aprovisionamiento "headless" en dispositivos IoT.
