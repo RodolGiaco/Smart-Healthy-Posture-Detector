@@ -14,3 +14,9 @@ psycopg2-binary
 redis
 openai>=0.27.0
 python-dotenv
+# Motor de inferencia del clasificador local de postura (POSTURE_CLASSIFIER=local,
+# ver neural_network/pose_recognition.py): en un dispositivo ARM (Raspberry Pi)
+# con tflite_runtime instalado, el código lo usa a él sin cambios (try/except).
+# Acá pineamos tensorflow porque no hay wheel de tflite_runtime para PC/x86_64;
+# tensorflow.lite trae el mismo Interpreter.
+tensorflow

@@ -21,6 +21,7 @@ import uvicorn
 from api.models import Sesion, Paciente, MetricaPostural, PosturaCount
 from api.database import Base, engine, SessionLocal
 from posture_monitor import PostureMonitor
+from neural_network.pose_recognition import LocalPostureClassifier
 from api.routers import sesiones, pacientes, metricas, analysis, postura_counts, timeline, calibracion
 from datetime import datetime
 from app.core.ws_manager import ws_manager
@@ -90,11 +91,32 @@ logger = logging.getLogger("shpd-backend")
 logger.setLevel(logging.DEBUG)
 
 
+# ——— SELECTOR DE CLASIFICADOR DE POSTURA (local TFLite vs. OpenAI) ———
+# "local" corre el modelo entrenado en shpd-edge-vision (TFLite, sobre los
+# landmarks de MediaPipe) y es el default: no necesita OPENAI_API_KEY para
+# el camino principal. "openai" es la alternativa explícita, para comparar
+# contra GPT-4o-mini (visión). Ver README.md, sección "Variables de entorno".
+_raw_posture_classifier = os.getenv("POSTURE_CLASSIFIER", "local")
+POSTURE_CLASSIFIER = _raw_posture_classifier.strip().lower()
+if POSTURE_CLASSIFIER not in ("local", "openai"):
+    logger.warning(
+        f"POSTURE_CLASSIFIER={_raw_posture_classifier!r} no reconocido "
+        "(valores válidos: 'local', 'openai'); usando 'local'"
+    )
+    POSTURE_CLASSIFIER = "local"
+
 # ——— CONFIGURACIÓN DEL CLIENTE DE OPENAI ———
+# Solo se exige OPENAI_API_KEY cuando realmente se va a usar: con
+# POSTURE_CLASSIFIER=local el backend corre sin ella.
 API_KEY = os.getenv("OPENAI_API_KEY")
-if not API_KEY:
-    raise RuntimeError("OPENAI_API_KEY environment variable is not set")
-client = OpenAI(api_key=API_KEY)
+client = None
+if POSTURE_CLASSIFIER == "openai":
+    if not API_KEY:
+        raise RuntimeError(
+            "OPENAI_API_KEY environment variable is not set "
+            "(requerida porque POSTURE_CLASSIFIER=openai)"
+        )
+    client = OpenAI(api_key=API_KEY)
 MODEL = "gpt-4o-mini"
 
 def build_openai_messages(b64: str) -> list[dict]:
@@ -163,14 +185,89 @@ Proporciona ÚNICAMENTE el objeto JSON como salida, sin texto adicional."""
 # ——— COLAS ASÍNCRONAS ———
 processed_frames_queue: asyncio.Queue = asyncio.Queue(maxsize=10)
 api_analysis_queue: asyncio.Queue = asyncio.Queue()
+local_analysis_queue: asyncio.Queue = asyncio.Queue()
 _triggered_sessions = set()  # para disparar clasificación sólo una vez por umbral
+_local_posture_classifier: LocalPostureClassifier | None = None  # instanciado lazy, ver local_analysis_worker
+
+
+async def _apply_classification_result(
+    session_id: str, device_id: str, bad_time: str, result: dict[str, float]
+) -> None:
+    """
+    Post-procesamiento común a cualquier mecanismo de clasificación de
+    postura (OpenAI o el modelo local TFLite, ver POSTURE_CLASSIFIER):
+    guarda `result` en Redis bajo analysis:{session_id}, hace upsert del
+    label ganador en PosturaCount, agrega el evento a la timeline de la
+    sesión y dispara la alerta al paciente por Telegram.
+
+    `result` tiene que ser {postura_canónica: porcentaje 0-100} con las 12
+    claves -- el mismo shape sin importar qué mecanismo lo generó, para que
+    /analysis/{id} y el frontend sigan funcionando igual.
+    """
+    r.hset(f"analysis:{session_id}", mapping=result)
+    logger.debug(f"✔️ Analysis saved for session {session_id}")
+
+    if not result:
+        return
+
+    # Encontrar la clave cuyo valor sea máximo
+    top_label, top_value = max(result.items(), key=lambda kv: kv[1])
+    # Abrir sesión de DB para hacer upsert en PosturaCount
+    db = SessionLocal()
+    try:
+        # Intentar obtener la fila existente
+        fila = (
+            db.query(PosturaCount)
+            .filter(
+                PosturaCount.session_id == session_id,
+                PosturaCount.posture_label == top_label
+            )
+            .first()
+        )
+        if fila:
+            # Si existe, incrementamos el contador
+            fila.count += 1
+            db.add(fila)
+        else:
+            # Si no existe, creamos una nueva fila
+            nueva = PosturaCount(
+                session_id=session_id,
+                posture_label=top_label,
+                count=1
+            )
+            db.add(nueva)
+        db.commit()
+        logger.debug(f"✔️ PostureCount updated: {session_id} - {top_label}")
+        # Guardar evento de timeline
+        try:
+            evt = {
+                "timestamp": datetime.utcnow().isoformat(),
+                "postura": top_label,
+                "tiempo_mala_postura": bad_time
+            }
+            r.rpush(f"timeline:{session_id}", json.dumps(evt))
+            r.ltrim(f"timeline:{session_id}", -200, -1)
+            asyncio.create_task(
+                 enviar_alerta_paciente_bg(device_id, top_label, bad_time)
+            )
+            logger.info("Alerta enviada al paciente.")
+        except Exception:
+            logger.exception("Error guardando timeline")
+    except Exception:
+        logger.exception("Error actualizando PosturaCount en DB")
+        db.rollback()
+    finally:
+        db.close()
+
 
 # ——— WORKER PARA LLAMADAS A OPENAI ———
 async def api_analysis_worker():
     """
     Worker que consume de api_analysis_queue payloads con:
-      { session_id, b64, exercise }
-    Llama a OpenAI y guarda el JSON resultante en Redis bajo analysis:{session_id}.
+      { session_id, jpeg, bad_time, device_id }
+    Arma el request a OpenAI, parsea el JSON de la respuesta y delega el
+    resto (Redis, PosturaCount, timeline, alerta) a
+    _apply_classification_result.
     """
     loop = asyncio.get_running_loop()
     logger.debug("🔄 API analysis worker iniciado")
@@ -196,65 +293,56 @@ async def api_analysis_worker():
             )
             content = response.choices[0].message.content
             logger.debug(content)
-            result: dict[str, bool] = json.loads(content)
-            r.hset(f"analysis:{session_id}", mapping=result)
-            logger.debug(f"✔️ Analysis saved for session {session_id}")
-            
-            
-            
-            if result:
-               # Encontrar la clave cuyo valor sea máximo
-               top_label, top_value = max(result.items(), key=lambda kv: kv[1])
-               # 3) Abrir sesión de DB para hacer upsert en PosturaCount
-               db = SessionLocal()
-               try:
-                   # Intentar obtener la fila existente
-                   fila = (
-                       db.query(PosturaCount)
-                       .filter(
-                           PosturaCount.session_id == session_id,
-                           PosturaCount.posture_label == top_label
-                       )
-                       .first()
-                   )
-                   if fila:
-                       # Si existe, incrementamos el contador
-                       fila.count += 1
-                       db.add(fila)
-                   else:
-                       # Si no existe, creamos una nueva fila
-                       nueva = PosturaCount(
-                           session_id=session_id,
-                           posture_label=top_label,
-                           count=1
-                       )
-                       db.add(nueva)
-                   db.commit()
-                   logger.debug(f"✔️ PostureCount updated: {session_id} - {top_label}")
-                   # Guardar evento de timeline
-                   try:
-                       evt = {
-                           "timestamp": datetime.utcnow().isoformat(),
-                           "postura": top_label,
-                           "tiempo_mala_postura": bad_time
-                       }
-                       r.rpush(f"timeline:{session_id}", json.dumps(evt))
-                       r.ltrim(f"timeline:{session_id}", -200, -1)
-                       asyncio.create_task(
-                            enviar_alerta_paciente_bg(device_id, top_label, bad_time)
-                       )
-                       logger.info("Alerta enviada al paciente.")
-                   except Exception:
-                       logger.exception("Error guardando timeline")
-               except Exception:
-                   logger.exception("Error actualizando PosturaCount en DB")
-                   db.rollback()
-               finally:
-                   db.close()
+            result: dict[str, float] = json.loads(content)
+            await _apply_classification_result(session_id, device_id, bad_time, result)
         except Exception:
             logger.exception("Error en análisis OpenAI")
         finally:
             api_analysis_queue.task_done()
+
+
+# ——— WORKER PARA EL CLASIFICADOR LOCAL (TFLite) ———
+async def local_analysis_worker():
+    """
+    Worker análogo a api_analysis_worker pero para el modelo local TFLite
+    (ver neural_network/pose_recognition.py). Consume de
+    local_analysis_queue payloads con:
+      { session_id, landmark_list, image_shape, bad_time, device_id }
+    donde `landmark_list` son los `pose_landmarks` crudos de MediaPipe del
+    frame que disparó el umbral (`PostureMonitor.last_pose_landmarks`) e
+    `image_shape` sus dimensiones (`PostureMonitor.last_image_shape`).
+
+    La inferencia TFLite es sincrónica y local (sin latencia de red), pero
+    igual corre en un executor (`loop.run_in_executor`, mismo patrón que
+    `posture_monitor.process_frame`) y detrás de esta cola propia, para no
+    bloquear el loop de video_input y mantener la misma arquitectura que el
+    camino OpenAI.
+    """
+    global _local_posture_classifier
+    loop = asyncio.get_running_loop()
+    logger.debug("🔄 Local analysis worker iniciado")
+    while True:
+        payload = await local_analysis_queue.get()
+        session_id    = payload["session_id"]
+        landmark_list = payload["landmark_list"]
+        image_shape   = payload["image_shape"]
+        bad_time      = payload["bad_time"]
+        device_id     = payload["device_id"]
+        try:
+            if _local_posture_classifier is None:
+                _local_posture_classifier = LocalPostureClassifier()
+            result = await loop.run_in_executor(
+                None, _local_posture_classifier.classify, landmark_list, image_shape
+            )
+            if result is None:
+                logger.warning(f"Clasificador local sin landmarks para session {session_id}")
+                continue
+            logger.debug(result)
+            await _apply_classification_result(session_id, device_id, bad_time, result)
+        except Exception:
+            logger.exception("Error en análisis local (TFLite)")
+        finally:
+            local_analysis_queue.task_done()
 
 async def enviar_alerta_paciente_bg(device_id: str,
                                 etiqueta: str,
@@ -296,14 +384,18 @@ async def lifespan(app: FastAPI):
     """
     Ciclo de vida de la app: crea el cliente de Telegram (`telegram_bot`,
     usado por las alertas y el reporte final) y lanza `api_analysis_worker`
-    como tarea de fondo antes de aceptar requests.
+    y `local_analysis_worker` como tareas de fondo antes de aceptar
+    requests -- solo uno de los dos recibe payloads en runtime, según
+    POSTURE_CLASSIFIER (ver video_input), pero ambos arrancan siempre para
+    mantener la arquitectura simétrica entre los dos mecanismos.
     """
     request = HTTPXRequest(connection_pool_size=8, connect_timeout=5.0)
     global telegram_bot
     telegram_bot = Bot(token=TELEGRAM_TOKEN, request=request)
     asyncio.create_task(api_analysis_worker())
-    logger.debug("✅ API analysis worker scheduled")
-    yield  
+    asyncio.create_task(local_analysis_worker())
+    logger.debug(f"✅ Analysis workers scheduled (POSTURE_CLASSIFIER={POSTURE_CLASSIFIER!r})")
+    yield
     
 app = FastAPI(lifespan=lifespan)
 app.state.input_ws_by_device = {}
@@ -358,9 +450,10 @@ async def video_input(websocket: WebSocket, device_id: str):
     (re)crea el `PostureMonitor` si la sesión cambió, procesa el frame
     (dibuja ángulos/esqueleto) y lo publica en `processed_frames_queue`
     para que `/video/output` lo retransmita. Si Redis marcó un frame como
-    disparador de alerta (`raw_frame:{session_id}`), lo encola en
-    `api_analysis_queue` para que `api_analysis_worker` lo clasifique con
-    OpenAI.
+    disparador de alerta (`raw_frame:{session_id}`), lo encola para su
+    clasificación según `POSTURE_CLASSIFIER`: en `api_analysis_queue`
+    (`api_analysis_worker`, vía OpenAI) o en `local_analysis_queue`
+    (`local_analysis_worker`, vía el modelo TFLite local).
 
     El modo calibración se decide por el query string de esta conexión
     (`?calibracion=1`) mientras no haya un `mode` explícito en
@@ -421,18 +514,28 @@ async def video_input(websocket: WebSocket, device_id: str):
                 processed_frames_queue.get_nowait()
             await processed_frames_queue.put(jpeg)
 
-            # 4. Dispara análisis OpenAI si guardaron un frame crudo (solo si hay session_id válido)
+            # 4. Dispara análisis (OpenAI o local, según POSTURE_CLASSIFIER)
+            #    si guardaron un frame crudo (solo si hay session_id válido)
             if posture_monitor is not None and not calibrating:
                 raw_key = f"raw_frame:{session_id}"
-                flag_value = r.hget(raw_key, "flag_alert")  
-                bad_time = r.hget(raw_key, "bad_time")  
+                flag_value = r.hget(raw_key, "flag_alert")
+                bad_time = r.hget(raw_key, "bad_time")
                 if flag_value == "1":
-                    await api_analysis_queue.put({
-                        "session_id": session_id,
-                        "jpeg": jpeg,
-                        "bad_time": bad_time,
-                        "device_id": device_id
-                    })
+                    if POSTURE_CLASSIFIER == "openai":
+                        await api_analysis_queue.put({
+                            "session_id": session_id,
+                            "jpeg": jpeg,
+                            "bad_time": bad_time,
+                            "device_id": device_id
+                        })
+                    else:  # "local"
+                        await local_analysis_queue.put({
+                            "session_id": session_id,
+                            "landmark_list": posture_monitor.last_pose_landmarks,
+                            "image_shape": posture_monitor.last_image_shape,
+                            "bad_time": bad_time,
+                            "device_id": device_id
+                        })
                     r.delete(raw_key)
                     logger.debug(f"✔️ Disparo para analisis ejecutado para sesión {session_id}")
                 

@@ -34,7 +34,7 @@ Referencia completa de los endpoints expuestos por `backend/main.py` y sus route
 | Método | Ruta | Descripción |
 |---|---|---|
 | `GET` | `/metricas/{sesion_id}` | Última métrica calculada por `PostureMonitor` para la sesión (porcentaje correcta/incorrecta, tiempo sentado/parado, alertas). |
-| `GET` | `/analysis/{sesion_id}` | Último resultado de clasificación de OpenAI: las 12 posturas con su porcentaje estimado. |
+| `GET` | `/analysis/{sesion_id}` | Último resultado de clasificación de postura: las 12 posturas con su porcentaje estimado, generado por el modelo local TFLite o por OpenAI según `POSTURE_CLASSIFIER` (ver [POSTURE_CLASSIFIER.md](POSTURE_CLASSIFIER.md)). |
 | `GET` | `/postura_counts/{session_id}` | Conteo acumulado de veces que cada postura fue la más predominante en la sesión. |
 | `GET` | `/timeline/{session_id}` | Historial de eventos de postura de la sesión (timestamp, postura detectada, tiempo en mala postura). |
 

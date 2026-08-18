@@ -10,6 +10,16 @@
 # (mp.solutions.pose). Anything >=1.0 breaks PostureMonitor with
 # "AttributeError: module 'mediapipe' has no attribute 'solutions'".
 #
+# tensorflow (re-resolved + re-tested on 2026-08-17) is `tensorflow.lite`,
+# the fallback interpreter that backend/neural_network/pose_recognition.py
+# uses to run the local TFLite posture classifier (POSTURE_CLASSIFIER=local)
+# when tflite_runtime isn't installed -- there's no tflite_runtime wheel for
+# PC/x86_64, only for ARM (Raspberry Pi). Pulling tensorflow in forced two
+# changes to keep the set installable together: numpy had to drop from
+# 2.5.2 to 2.1.3 (tensorflow requires numpy<2.2.0) and protobuf stayed
+# pinned at 4.25.9, the version already shared by mediapipe's own protobuf<5
+# constraint -- both were confirmed compatible with `pip check`.
+#
 # This file is a superset of backend/requirements.txt + bot/requirements.txt,
 # resolved together in one virtualenv so both services can share it.
 # It intentionally excludes picamera2 (modo-ap/test_websocket.py), which only
@@ -23,9 +33,11 @@ absl-py==2.5.0
 annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.14.2
+astunparse==1.6.3
 attrs==26.1.0
 certifi==2026.7.22
 cffi==2.1.1
+charset-normalizer==3.5.1
 click==8.4.2
 contourpy==1.3.3
 cycler==0.12.1
@@ -33,8 +45,12 @@ distro==1.9.0
 fastapi==0.141.1
 flatbuffers==25.12.19
 fonttools==4.63.0
+gast==0.7.0
+google-pasta==0.2.0
 greenlet==3.5.5
+grpcio==1.83.0
 h11==0.16.0
+h5py==3.14.0
 httpcore==1.0.9
 httpcore2==2.10.0
 httpx==0.28.1
@@ -43,15 +59,23 @@ idna==3.18
 jax==0.11.1
 jaxlib==0.11.1
 jiter==0.16.0
+keras==3.15.1
 kiwisolver==1.5.0
+libclang==18.1.1
+Markdown==3.10.3
+markdown-it-py==4.2.0
+MarkupSafe==3.0.3
 matplotlib==3.11.1
+mdurl==0.1.2
 mediapipe==0.10.14
 ml_dtypes==0.6.0
-numpy==2.5.2
+namex==0.1.0
+numpy==2.1.3
 openai==3.2.0
 opencv-contrib-python==5.0.0.93
 opencv-python-headless==5.0.0.93
 opt_einsum==3.4.0
+optree==0.19.1
 packaging==26.3
 pillow==12.3.0
 protobuf==4.25.9
@@ -59,20 +83,32 @@ psycopg2-binary==2.9.9
 pycparser==3.0
 pydantic==2.13.4
 pydantic_core==2.46.4
+Pygments==2.21.0
 pyparsing==3.3.2
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
 python-telegram-bot==22.8
 redis==8.1.0
+requests==2.34.2
+rich==15.0.0
 scipy==1.18.0
+setuptools==84.0.0
 six==1.17.0
 sniffio==1.3.1
 sounddevice==0.5.6
 SQLAlchemy==2.0.27
 starlette==1.6.0
+tensorboard==2.19.0
+tensorboard-data-server==0.7.2
+tensorflow==2.19.1
+termcolor==3.3.0
 tqdm==4.70.0
 truststore==0.10.4
 typing-inspection==0.4.4
 typing_extensions==4.16.0
+urllib3==2.7.0
 uvicorn==0.52.3
 websockets==17.0.1
+Werkzeug==3.1.8
+wheel==0.48.0
+wrapt==2.3.0

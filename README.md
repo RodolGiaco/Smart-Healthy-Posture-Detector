@@ -7,6 +7,7 @@ Sistema de monitoreo postural en tiempo real para Raspberry Pi 3: detecta con vi
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
 ![MediaPipe](https://img.shields.io/badge/MediaPipe-Pose-00C4CC)
+![TensorFlow Lite](https://img.shields.io/badge/TensorFlow%20Lite-FF6F00?logo=tensorflow&logoColor=white)
 ![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o--mini-412991?logo=openai&logoColor=white)
 ![Telegram](https://img.shields.io/badge/Telegram-Bot-26A5E4?logo=telegram&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)
@@ -45,12 +46,12 @@ Cada paciente interactúa con el sistema exclusivamente a través de un **bot de
 
 Vista completa de una sesión activa: video en vivo con el esqueleto de MediaPipe dibujado, la postura detectada, métricas de correcta/incorrecta y el historial de la sesión.
 
-![Vista general del dashboard web](docs/web-dashboard-overview.png)
+![Vista general del dashboard web](docs/images/web-dashboard-overview.png)
 
 <details>
 <summary>Más capturas del dashboard</summary>
 
-![Detección de postura en vivo](docs/live-dashboard-posture-detection.png)
+![Detección de postura en vivo](docs/images/live-dashboard-posture-detection.png)
 
 </details>
 
@@ -58,21 +59,21 @@ Vista completa de una sesión activa: video en vivo con el esqueleto de MediaPip
 
 Antes de la primera sesión, cada dispositivo pasa por una calibración guiada con progreso en vivo.
 
-![Flujo de calibración del dispositivo](docs/device-calibration-flow.png)
+![Flujo de calibración del dispositivo](docs/images/device-calibration-flow.png)
 
 ### Bot de Telegram
 
 Toda la interacción del paciente —registro, configuración de sesión, ajuste de umbral de alerta, alertas en vivo y reporte final— pasa por el bot.
 
-![Registro y menú del bot de Telegram](docs/telegram-bot-onboarding-menu.png)
+![Registro y menú del bot de Telegram](docs/images/telegram-bot-onboarding-menu.png)
 
 <details>
 <summary>Más capturas del bot</summary>
 
-![Perfil de paciente y ajuste de alertas](docs/telegram-patient-profile-alerts.png)
-![Alertas e historial de posturas](docs/telegram-alerts-posture-history.png)
-![Compartir el link de monitoreo en vivo](docs/share-live-monitoring-link.png)
-![Reporte de cierre de sesión](docs/session-summary-telegram-report.png)
+![Perfil de paciente y ajuste de alertas](docs/images/telegram-patient-profile-alerts.png)
+![Alertas e historial de posturas](docs/images/telegram-alerts-posture-history.png)
+![Compartir el link de monitoreo en vivo](docs/images/share-live-monitoring-link.png)
+![Reporte de cierre de sesión](docs/images/session-summary-telegram-report.png)
 
 </details>
 
@@ -80,17 +81,17 @@ Toda la interacción del paciente —registro, configuración de sesión, ajuste
 
 Primer arranque de la Raspberry Pi, sin monitor ni teclado: hotspot WiFi propio y formulario de configuración.
 
-![Conexión al hotspot SHPD_SETUP](docs/wifi-hotspot-connection.png)
-![Formulario de configuración del dispositivo](docs/device-provisioning-web-form.png)
+![Conexión al hotspot SHPD_SETUP](docs/images/wifi-hotspot-connection.png)
+![Formulario de configuración del dispositivo](docs/images/device-provisioning-web-form.png)
 
 ### Dispositivo
 
-![Dispositivo armado y vista desde el celular](docs/device-hardware-mobile-preview.png)
+![Dispositivo armado y vista desde el celular](docs/images/device-hardware-mobile-preview.png)
 
 ## Características principales
 
 - 🦴 **Detección de postura en tiempo real** vía MediaPipe Pose (ángulos de cuello y torso), corriendo directamente en la Raspberry Pi.
-- 🧠 **Clasificación fina con IA** de 12 posturas problemáticas específicas usando GPT-4o-mini (visión), disparada solo cuando hace falta.
+- 🧠 **Clasificación fina con IA** de 12 posturas problemáticas específicas, disparada solo cuando hace falta — con un modelo propio (MLP entrenado, corre local vía TFLite) o GPT-4o-mini (visión), intercambiables por variable de entorno. Ver [docs/POSTURE_CLASSIFIER.md](docs/POSTURE_CLASSIFIER.md).
 - 🎯 **Calibración guiada por dispositivo**: cada Raspberry Pi/cámara pasa por una calibración inicial antes de empezar a medir sesiones reales.
 - 🤖 **Bot de Telegram** como interfaz principal para pacientes (registro, configuración de sesión, ajuste de umbral de alerta) y especialistas (registro, recepción de reportes).
 - 🔔 **Alertas configurables**: umbral de tiempo en mala postura ajustable por paciente (5/10/20/30 s o personalizado) antes de disparar la clasificación y la notificación.
@@ -107,7 +108,8 @@ Primer arranque de la Raspberry Pi, sin monitor ni teclado: hotspot WiFi propio 
 | Uvicorn | — | Servidor ASGI |
 | MediaPipe | **0.10.14** (fijada) | Detección de landmarks corporales (pose) |
 | OpenCV | — | Captura/codificación de frames de video |
-| OpenAI API | `gpt-4o-mini` | Clasificación de las 12 posturas específicas |
+| OpenAI API | `gpt-4o-mini` | Clasificación de las 12 posturas específicas (mecanismo `openai`) |
+| TensorFlow Lite | — | Clasificación local de las 12 posturas específicas (mecanismo `local`, default): mismo modelo entrenado y validado en shpd-edge-vision para Raspberry Pi 3 |
 | python-telegram-bot | ≥20.0 | Bot de Telegram (registro, menús, alertas) |
 | SQLAlchemy + psycopg2 | — | ORM y driver de PostgreSQL |
 | PostgreSQL | — | Persistencia: pacientes, especialistas, sesiones, métricas |
@@ -125,7 +127,7 @@ Primer arranque de la Raspberry Pi, sin monitor ni teclado: hotspot WiFi propio 
 
 ### Vista general
 
-![Diagrama de arquitectura del sistema](docs/system-architecture-diagram.png)
+![Diagrama de arquitectura del sistema](docs/images/system-architecture-diagram.png)
 
 ### Flujo de datos
 
@@ -204,8 +206,11 @@ sequenceDiagram
 ```
 shpd-all/
 ├── backend/                # API FastAPI + WebSocket + pipeline de postura
-│   ├── main.py              # Entry point: WebSockets de video, worker de OpenAI, montaje de routers
+│   ├── main.py              # Entry point: WebSockets de video, workers de análisis (local/OpenAI), montaje de routers
 │   ├── posture_monitor.py   # Cálculo de ángulos con MediaPipe, lógica de alerta/calibración
+│   ├── neural_network/
+│   │   └── pose_recognition.py  # Clasificador local: landmarks -> TFLite -> 12 posturas
+│   ├── model/                # Modelo TFLite entrenado (keypoint_classifier.tflite) y sus labels
 │   ├── config/
 │   │   └── posture_config.json  # Umbrales de ángulo cuello/torso
 │   └── api/
@@ -228,8 +233,9 @@ shpd-all/
 ├── modo-app/                 # Raspberry Pi: arranque automático de backend/bot/frontend (systemd)
 ├── modo-pc/                  # PC: scripts equivalentes para desarrollo y testing local
 │
-├── docs/                      # Capturas del README y referencia extendida de la API
-│   └── API.md
+├── docs/                      # Capturas del README y documentación extendida
+│   ├── API.md                 # Referencia completa de endpoints
+│   └── POSTURE_CLASSIFIER.md  # Cómo funciona el clasificador local (TFLite) vs. OpenAI
 │
 ├── .env.example               # Variables de entorno necesarias, sin valores reales
 ├── requirements-pc.txt        # Dependencias Python fijadas, probadas end-to-end en PC
@@ -332,8 +338,9 @@ Definidas en `.env` (ver `.env.example`):
 |---|---|
 | `DATABASE_URL` | Cadena de conexión a PostgreSQL |
 | `TELEGRAM_TOKEN` | Token del bot, emitido por [@BotFather](https://t.me/BotFather) |
-| `OPENAI_API_KEY` | API key de OpenAI, para la clasificación de posturas |
+| `OPENAI_API_KEY` | API key de OpenAI. Solo requerida si `POSTURE_CLASSIFIER=openai` |
 | `FRONTEND_URL` | Host que el bot usa para armar el link de "Ver monitoreo en vivo" (`http://rodo.local:3000` en la Pi, `http://localhost:3000` o la IP de LAN en PC) |
+| `POSTURE_CLASSIFIER` | Mecanismo para clasificar las 12 posturas específicas: `local` (modelo TFLite entrenado en shpd-edge-vision, default) u `openai` (GPT-4o-mini vision). Valor no reconocido cae a `local` con un warning en el log |
 
 ## API
 
@@ -359,6 +366,7 @@ Referencia completa con la descripción de cada uno en **[docs/API.md](docs/API.
 - **WebSockets para el video, no HTTP polling**: tanto la ingesta de frames (`/video/input`) como la salida procesada (`/video/output`) usan WebSockets persistentes — necesario para mantener framerate en tiempo real sin la sobrecarga de abrir una conexión HTTP por frame.
 - **`mediapipe` fijado a `0.10.14`**: las versiones `1.0.x` eliminaron la API `mediapipe.solutions.pose` que usa `posture_monitor.py` a favor de una API nueva. Fijar la versión evita que una instalación futura rompa la detección de postura sin aviso.
 - **Separación `modo-ap` / `modo-app` / `modo-pc`**: la lógica de negocio no depende de dónde vienen los frames, así que el mismo backend/bot/frontend corre igual en la Raspberry Pi que en una PC de desarrollo — solo cambia el productor de video y el modo de arranque de los procesos.
+- **Clasificador de postura intercambiable (`POSTURE_CLASSIFIER`)**: la clasificación fina de las 12 posturas puede resolverse con el modelo entrenado localmente (TFLite, el mismo validado en shpd-edge-vision para Raspberry Pi 3) o con la API de OpenAI (GPT-4o-mini vision), elegido por variable de entorno. Los dos mecanismos comparten toda la lógica posterior (Redis, PosturaCount, timeline, alerta a Telegram) — pensado para comparar el modelo propio contra un modelo de visión a gran escala sin duplicar lógica de aplicación. Cómo funciona el mecanismo local paso a paso: [docs/POSTURE_CLASSIFIER.md](docs/POSTURE_CLASSIFIER.md).
 
 ## Autor y contacto
 

@@ -60,6 +60,13 @@ class PostureMonitor:
         self.all_frames = 0
         self.flag_alert = True
         self.flag_transition = True
+
+        # Landmarks del último frame procesado (crudos, de MediaPipe) y sus
+        # dimensiones -- los usa el clasificador local (ver
+        # neural_network/pose_recognition.py) cuando POSTURE_CLASSIFIER=local
+        # dispara el análisis en main.py, sin tener que recalcular la pose.
+        self.last_pose_landmarks = None
+        self.last_image_shape = None
         
         try:
              self.time_threshold = int(r.get(f"alert_threshold:{self.device_id}") or 10)
@@ -121,6 +128,13 @@ class PostureMonitor:
 
         lm = keypoints.pose_landmarks
         lmPose = self.mp_pose.PoseLandmark
+
+        # Guardar el resultado crudo de este frame para el clasificador
+        # local (ver arriba) -- actualizado en cada llamada, incluso cuando
+        # no se detectó a nadie (lm es None).
+        self.last_pose_landmarks = lm
+        self.last_image_shape = image.shape
+
         fps = 15
         buffer_key = f"shpd-data:{self.session_id}"
         if lm is None:
